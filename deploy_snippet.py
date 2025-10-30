@@ -1,23 +1,47 @@
 import sagemaker
-from sagemaker.pytorch import PyTorch
 from sagemaker import get_execution_role
+from sagemaker.tensorflow import TensorFlow
 
-role = "arn:aws:iam::898423169134:user/weather-mlops-jayaram"
+# --- CONFIG ---
+BUCKET = "weather-mlops-main"                      # your S3 bucket
+DATA_KEY = "train_with_weather.csv"                # FIXED: dataset at root
+OUTPUT_PATH = f"s3://{BUCKET}/output/"             # where model artifacts will go
+ROLE = "arn:aws:iam::898423169134:role/service-role/AmazonSageMaker-ExecutionRole-20251028T094309"  # correct execution role
+
+# --- SageMaker Session ---
 sess = sagemaker.Session()
 
-estimator = sagemaker.estimator.Estimator(
-    entry_point='train.py',
-    source_dir='.',
-    role=role,
+# --- S3 paths ---
+train_input = f"s3://{BUCKET}/{DATA_KEY}"
+
+# --- Define TensorFlow Estimator (runs your train.py) ---
+estimator = TensorFlow(
+    entry_point="train.py",
+    source_dir=".",                # train.py + weather_forecast_pipeline.py here
+    role=ROLE,
     instance_count=1,
-    instance_type='ml.m5.xlarge',
-    image_uri=None,  # let SageMaker pick a suitable image or use prebuilt framework estimator
-    hyperparameters={'epochs': 6}
+    instance_type="ml.m5.xlarge",
+    framework_version="2.14",      # TensorFlow version
+    py_version="py310",            # Python version
+    output_path=OUTPUT_PATH,       # trained model artifacts go here automatically
+    base_job_name="weather-forecast-train",
+    hyperparameters={"epochs": 6}
 )
 
-# Upload local training CSV to S3 and point to that channel. Example:
-s3_input = sagemaker.Session().upload_data(path='train_with_weather.csv', key_prefix='weather-train')
-estimator.fit({'train': s3_input})
+print("Estimator defined")
 
-# After training, deploy
-predictor = estimator.deploy(initial_instance_count=1, instance_type='ml.m5.large')
+# --- Launch training job ---
+estimator.fit({"train": train_input}, wait=True)
+
+print("Estimator trained")
+
+# --- Deploy model as endpoint ---
+predictor = estimator.deploy(
+    initial_instance_count=1,
+    instance_type="ml.m5.large",
+    entry_point="inference.py",    # inference script to handle requests
+    source_dir=".",                # inference.py + pipeline file
+)
+
+print("✅ Deployment complete!")
+print("Endpoint name:", predictor.endpoint_name)

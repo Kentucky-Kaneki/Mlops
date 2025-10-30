@@ -21,15 +21,32 @@ from weather_forecast_pipeline import WeatherForecastPipeline, refine_weather_lo
 
 
 def parse_args():
+    import argparse
+    import os
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('--train-data', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train'))
-    parser.add_argument('--output-dir', type=str, default=os.environ.get('SM_MODEL_DIR', '/opt/ml/model'))
+
+    # your main hyperparameters and data paths
+    parser.add_argument('--train-data', type=str,
+                        default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train'))
+    parser.add_argument('--output-dir', type=str,
+                        default=os.environ.get('SM_MODEL_DIR', '/opt/ml/model'))
     parser.add_argument('--seq-len', type=int, default=168)
     parser.add_argument('--horizon', type=int, default=168)
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--epochs', type=int, default=6)
     parser.add_argument('--random-seed', type=int, default=42)
-    return parser.parse_args()
+
+    # ✅ These extra args are passed automatically by SageMaker — harmless if unused
+    parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_MODEL_DIR', '/opt/ml/model'))
+    parser.add_argument('--sm-model-dir', type=str, default=os.environ.get('SM_MODEL_DIR', '/opt/ml/model'))
+    parser.add_argument('--sm-output-data-dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', '/opt/ml/output/data'))
+    parser.add_argument('--sm-channel-train', type=str, default=os.environ.get('SM_CHANNEL_TRAIN', '/opt/ml/input/data/train'))
+
+    # ✅ Avoid crash from any unknown arguments
+    args, _ = parser.parse_known_args()
+    return args
+
 
 
 def supervised_sequences(values, seq_len=168, horizon=168):
@@ -167,20 +184,3 @@ if __name__ == '__main__':
         json.dump(meta, f)
 
     print('Training completed successfully. Artifacts saved to', args.output_dir)
-
-## Usage notes
-
-# 1. Put `train_with_weather.csv` inside the SageMaker training channel (or upload to S3 and pass as channel). The script expects the file name `train_with_weather.csv` in the training channel folder.
-# 2. `train.py` writes artifacts to `/opt/ml/model` (SageMaker default). The `pipeline.save()` writes `weather_forecast_pipeline.pkl` and `weather_forecast_pipeline_lstm.keras` (suffix `_lstm.keras`).
-# 3. `inference.py` loads the pipeline and returns JSON with `predictions` list.
-# 4. Adjust `refine_weather_logic()` in `weather_forecast_pipeline.py` to include any domain rules you need.
-
-# ---
-
-# If you'd like, I can also:
-
-# * produce a single `model.tar.gz` packaging step required for custom containers,
-# * generate a Dockerfile for a custom inference image,
-# * create a small unit-test notebook that runs locally with the included code.
-
-# Tell me which of those you want next.
